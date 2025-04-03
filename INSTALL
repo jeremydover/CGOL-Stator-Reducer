@@ -1,0 +1,1 @@
+The only external requirement is Google's OR Tools, which can be installed with: pip install ortools
