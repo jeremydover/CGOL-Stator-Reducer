@@ -3,6 +3,7 @@
 from __future__ import print_function
 import re
 import sys
+import time
 import argparse
 from ortools.sat.python import cp_model
 from array import *
@@ -24,6 +25,32 @@ class screen_printer:
 	def print(self,level,target):
 		if level <= self.print_level:
 			print(target)
+
+class ObjectiveSolutionPrinter(cp_model.CpSolverSolutionCallback):
+	
+	def __init__(self,variables):
+		cp_model.CpSolverSolutionCallback.__init__(self)
+		self.__solution_count = 0
+		self.__start_time = time.time()
+		self.__variables = variables
+
+	def on_solution_callback(self):
+		current_time = time.time()
+		obj = self.ObjectiveValue()
+		P.print(p.NORMAL,'Solution %i, time = %0.2f s, objective = %i' %
+              (self.__solution_count, current_time - self.__start_time, obj))
+		self.print_RLE()
+		self.__solution_count += 1
+
+	def solution_count(self):
+		return self.__solution_count
+
+	def print_RLE(self):
+		height = len(self.__variables)
+		width = len(self.__variables[0])
+		my_values = [[self.Value(self.__variables[i][j]) for j in range(width)] for i in range(height)]
+		rle = array_to_RLE(my_values)
+		P.print(P.NORMAL,rle)
 
 def RLE_to_tuples(rle):
 	# First get bounding box sizes from RLE
@@ -63,6 +90,30 @@ def RLE_to_tuples(rle):
 			current_row = current_row + n
 		cells = re.sub('^(\d)*(b|o|\$)','',cells)
 	return live_cells, my_height, my_width
+
+def array_to_RLE(variables):
+	height = len(variables)
+	width = len(variables[0])
+	
+	rle = ''
+	content = ''
+	for i in range(height):
+		for j in range(width):
+			content = content + str(variables[i][j])
+		content = content + '\n'
+		
+	while content != '\n':
+		if content[0] == '\n':
+			base = '$'
+		elif content[0] == '0':
+			base = 'b'
+		else:
+			base = 'o'
+		count = re.search('[^'+content[0]+']',content).start();
+		rle = rle + str(count) + base
+		content = content[count:]
+	rle = rle + '!'
+	return rle
 
 def test_border(border):
 	# Converts list of integers to string
@@ -438,30 +489,16 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 	model.Minimize(size)
 
 	solver = cp_model.CpSolver()
+	print_vars = []
+	for i in range(vert_search_offset,search_height+vert_search_offset):
+		print_vars.insert(i-vert_search_offset,[a[0][i][j] for j in range(horz_search_offset,search_width+horz_search_offset)])
+	solution_callback = ObjectiveSolutionPrinter(print_vars)
 	status = solver.Solve(model)
 	P.print(P.TEST,'Status = %s' % solver.StatusName(status))
-	if status == cp_model.OPTIMAL:
-		rle = ''
-		content = ''
-		for i in range(vert_search_offset,search_height+vert_search_offset):
-			for j in range(horz_search_offset,search_width+horz_search_offset):
-				content = content + str(solver.Value(a[0][i][j]))
-			content = content + '\n'
-			
-		while content != '\n':
-			if content[0] == '\n':
-				base = '$'
-			elif content[0] == '0':
-				base = 'b'
-			else:
-				base = 'o'
-			count = re.search('[^'+content[0]+']',content).start();
-			rle = rle + str(count) + base
-			content = content[count:]
-		rle = rle + '!'
-		P.print(P.NORMAL,rle)
-
-		P.print(P.TEST,'Size of new stator: '+ str(sum(solver.Value(a[0][i][j]) for i in range(vert_search_offset,vert_search_offset+search_height) for j in range(horz_search_offset,horz_search_offset+search_width) if (i,j) not in (rotor_cells | ship_channel))))
+	value_vars = [[solver.Value(print_vars[i][j]) for j in range(search_width)] for i in range(search_height)]
+	rle = array_to_RLE(value_vars)
+	P.print(P.NORMAL,rle)
+	P.print(P.TEST,'Size of new stator: '+ str(solver.Value(size)))
 		#for p in range(period):
 		#	for i in range(model_height):
 		#		print('{:d}:'.format(i),end='')
