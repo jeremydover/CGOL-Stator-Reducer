@@ -303,6 +303,8 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 	horz_pattern_offset = max(0,left_adjust)
 	
 	# Original bounding box - does not expand, just shifted
+	vert_orig_offset = vert_orig_offset + max(0,top_adjust)
+	horz_orig_offset = horz_orig_offset + max(0,left_adjust)
 	# Search space - oh, this is complicated, because it depends on whether we're expanding or shrinking
 	# We only adjust the offset of the search box if we are shrinking at the top or left, since shrinking the
 	# search space does not mean we shrink the pattern space.
@@ -310,9 +312,8 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 	# For example, if we are trying to trim one row off the top, the pattern space stays the same, since we 
 	# still want to track life rules to make sure we're not expanding into that area. So the search space needs
 	# to move down a row.
-	vert_orig_offset += abs(top_adjust)
-	horz_orig_offset += abs(left_adjust)
-	
+	vert_search_offset = vert_search_offset + max(0,-top_adjust)
+	horz_search_offset = horz_search_offset + max(0,-left_adjust)
 	
 	search_height += top_adjust + bottom_adjust
 	search_width += left_adjust + right_adjust
