@@ -8,6 +8,11 @@ import argparse
 from ortools.sat.python import cp_model
 from array import *
 
+stilter=lambda f,i: filter(lambda i: f(*i),i) #star-filter
+from itertools import product
+rangectangle=lambda x0,xd,y0,yd: product(range(x0,x0+xd),range(y0,y0+yd))
+inctangle=lambda x0,xd,y0,yd: lambda x,y: xd>x-x0>=0<=y-y0<yd
+
 class screen_printer:
 	TEST = 0
 	NORMAL = 1
@@ -66,8 +71,9 @@ def RLE_to_tuples(rle,rule=False):
 	my_height = int(y.group(1))
 
 	if rule:
-		R = re.search(r"rule = B(\d+/S\d+)",rle).group(1).split('/S')
-		B,S=map(lambda s: list(map(lambda i: str(i) in s,range(9))),R)
+		r = re.search(r"rule = B(\d+/S\d+)",rle).group(1).split('/S')
+		if r is None: r==('3','23')
+		B,S=map(lambda s: list(map(lambda i: str(i) in s,range(9))),r)
 	
 	# Now strip header line, and eliminate carriage returns
 	cells = re.sub(r'^.*\n','',rle)
@@ -112,7 +118,7 @@ def test_border(border):
 	my_string = ''.join(map(str,border))
 	# We only need a new row/column if there are three contiguous live cells on the bounding box border of the
 	# previous pattern.
-	return int(my_string.find('111') != -1)
+	return int(B[3] and '111' in my_string or B[2] and ('11' in my_string or '101' in my_string))
 	
 
 def test_expansion(pattern):
@@ -136,7 +142,7 @@ def process_pattern(pattern,period,is_gun):
 	# Well, this is a pain. When I did the re-factor to allow for the pattern box to increase, I messed up how
 	# I was doing gun processing. How they're the same:
 	# Regardless of which way I'm processing, I want to expand the grid on which I'm processing if the pattern leaves.
-	# If we're in osciallator mode, I also want to expand the bounding_box of the search space.
+	# If we're in oscillator mode, I also want to expand the bounding_box of the search space.
 	# If we're in gun mode, I do *not* want to expand the bounding_box. I just want to record the added cells
 	#   as being in the ship channel, so I do not enforce periodicity there.
 	# So it looks like I need to keep track of search_size and pattern_size differently. And so we also need to keep track of
@@ -156,29 +162,29 @@ def process_pattern(pattern,period,is_gun):
 	horz_search_offset = 0
 		
 	# Our main structure is lifeArray, which will contain the state of each cell at each phase of the period, so it will be 
-	# a 3D array, indexed by period, then row, then column. 
-	life_array = [[[0 for j in range(current_pattern_width)] for i in range(current_pattern_height)]]
-	for x in live_cells:
-		life_array[0][x[0]][x[1]] = 1
+	# a 3D array, indexed by phase, then row, then column. 
+	life_array = [[[0]*current_pattern_width for i in range(current_pattern_height)]]
+	for i,j in live_cells:
+		life_array[0][i][j] = 1
 
 	# At each phase, we will determine if our bounding box size needs to increase. The number of addition rows/columns needed
 	# will be stored in the bounding_box_expansion array, where each element indicates the number of additional rows/column
 	# at left, right, top, bottom. No entry should be more than 1. And note, we will never shrink, even if the pattern does.
 	# We are simply using this to create a maximum.
 	bounding_box_expansion = [[0,0,0,0]]
-		
+
 	# Now let's apply life rules to the array.
 	# Note: to fix a super-painful-to-find bug in the gun case, we actually need to step an extra time beyond period
 	# All we really need this for is to determine if there are extra cells in the ship channel beyond the frame (spoiler:
 	# there can be). But it does not hurt to run the pattern an extra tick. 
-	for p in range(1,period+1):
-		expansion = test_expansion(life_array[p-1])
+	for p,ap in enumerate(life_array,start=1):
+		expansion = test_expansion(ap)
 		bounding_box_expansion.append(expansion)
 		
 		side = ['left','right','top','bottom']
 		for i in range(4):
 			if expansion[i] > 0:
-				P.print(P.DEBUG,'At period '+str(p)+': expanded pattern window by '+str(expansion[i])+' cell'+('s' if expansion[i] != 1 else '')+' at '+side[i])
+				P.print(P.DEBUG,'At phase '+str(p)+': expanded pattern window by '+str(expansion[i])+' cell'+('s' if expansion[i] != 1 else '')+' at '+side[i])
 		
 		# Now we know how big the array needs to be for this phase. We definitely increase the pattern size, and the offset 
 		# of the original_bounding_box
@@ -220,10 +226,10 @@ def process_pattern(pattern,period,is_gun):
 	
 		for i in range(current_pattern_height):
 			for j in range(current_pattern_width):
-				neighborhood = [life_array[p-1][i+k][j+m] for k in range(-1,2) for m in range(-1,2) if i+k in range(current_pattern_height) and j+m in range(current_pattern_width)]
-				this_phase_life_array[i][j] = S[sum(neighborhood)-1] if life_array[p-1][i][j] else B[sum(neighborhood)]
-		
+				neighborhood = [ap[i+k][j+m] for k in range(-1,2) for m in range(-1,2) if i+k in range(current_pattern_height) and j+m in range(current_pattern_width)]
+				this_phase_life_array[i][j] = S[sum(neighborhood)-1] if ap[i][j] else B[sum(neighborhood)]
 		life_array.append(this_phase_life_array)
+		if p==period: break
 	
 	# Looks like this might be another place where gun mode and oscillator mode differ. In oscillator mode, the search space 
 	# remains the entire pattern. Only in gun mode is there a difference (at this stage). In gun mode, the search space remains
@@ -237,23 +243,22 @@ def process_pattern(pattern,period,is_gun):
 	# Cells in the search space are considered either stator, blank or rotor. Even in gun mode, any ship cells are classified
 	# as rotor. Either the original pattern needs to be configured such that the ship stream is periodic, or the --shipchannel
 	# option can be passed to ensure that periodicity is not enforced on these cells.
-	for i in range(vert_search_offset,vert_search_offset+current_search_height):
-		for j in range(horz_search_offset,horz_search_offset+current_search_width):
-			my_values = [life_array[p][i][j] for p in range(period)]
-			if len(set(my_values)) == 1:
-				if my_values[0] == 0:
-					blank.append((i,j))
-				else:
-					stator.append((i,j))
+	for i,j in rangectangle(vert_search_offset,current_search_height,horz_search_offset,current_search_width):
+		my_values = [p[i][j] for p in life_array]
+		if len(set(my_values)) == 1:
+			if my_values[0]:
+				stator.append((i,j))
 			else:
-				rotor.append([i,j,my_values])
+				blank.append((i,j))
+		else:
+			rotor.append([i,j,my_values])
 	
 	# Now take care of any cells not in the current search space. This only occurs in the gun case, in which case these pattern
 	# cells form the "external" ship channel.
 	for i in range(current_pattern_height):
 		for j in range(current_pattern_width):
 			if i not in range(vert_search_offset,vert_search_offset+current_search_height) or j not in range(horz_search_offset,horz_search_offset+current_search_width):
-				if sum([life_array[p][i][j] for p in range(period+1)]) > 0:
+				if sum([p[i][j] for p in life_array]) > 0:
 					external_ship_channel.append((i,j))
 
 	### NOTE!
@@ -283,7 +288,7 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 	# 4. Model cells; all cells in the model...also given shortly; will be (0,0) with dimensions model_height and model_width.
 			
 	# Note: preserve, internal ship channel and forceblank are tied to the original frame, so it needs to be offset in case process_pattern made changes
-	offset=lambda s: {(x[0]+vert_orig_offset,x[1]+horz_orig_offset) for x in s}
+	offset=lambda s: {(i+vert_orig_offset,j+horz_orig_offset) for i,j in s}
 	preserve = offset(preserve)
 	forceblank = offset(forceblank)
 	internal_ship_channel = offset(internal_ship_channel)
@@ -303,8 +308,8 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 	horz_pattern_offset = max(0,left_adjust)
 	
 	# Original bounding box - does not expand, just shifted
-	vert_orig_offset = vert_orig_offset + max(0,top_adjust)
-	horz_orig_offset = horz_orig_offset + max(0,left_adjust)
+	vert_orig_offset += max(0,top_adjust)
+	horz_orig_offset += max(0,left_adjust)
 	# Search space - oh, this is complicated, because it depends on whether we're expanding or shrinking
 	# We only adjust the offset of the search box if we are shrinking at the top or left, since shrinking the
 	# search space does not mean we shrink the pattern space.
@@ -312,8 +317,8 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 	# For example, if we are trying to trim one row off the top, the pattern space stays the same, since we 
 	# still want to track life rules to make sure we're not expanding into that area. So the search space needs
 	# to move down a row.
-	vert_search_offset = vert_search_offset + max(0,-top_adjust)
-	horz_search_offset = horz_search_offset + max(0,-left_adjust)
+	vert_search_offset += max(0,-top_adjust)
+	horz_search_offset += max(0,-left_adjust)
 	
 	search_height += top_adjust + bottom_adjust
 	search_width += left_adjust + right_adjust
@@ -343,22 +348,28 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 
 	# Now that we have done all of the coordinate adjustments, we can finally rebase all of our sets that track the
 	# state of the evolving pattern. Remember that they are based on the pattern offsets at this point.
-	offset=lambda s: {(x[0] + vert_pattern_offset,x[1] + horz_pattern_offset) for x in s}
+	offset=lambda s: {(i + vert_pattern_offset,j + horz_pattern_offset) for i,j in s}
 	
-	rotor = [[x[0] + vert_pattern_offset,x[1] + horz_pattern_offset,x[2]] for x in rotor]
+	rotor = [[i + vert_pattern_offset,j + horz_pattern_offset,k] for i,j,k in rotor]
 	stator = offset(stator)
 	blank = offset(blank)
 	preserve = offset(preserve)
 	forceblank = offset(forceblank)
-	internal_ship_channel = {(x[0] + vert_pattern_offset,x[1] + horz_pattern_offset) for x in internal_ship_channel}
-	external_ship_channel = {(x[0] + vert_pattern_offset,x[1] + horz_pattern_offset) for x in external_ship_channel}
+	internal_ship_channel = offset(internal_ship_channel)
+	external_ship_channel = offset(external_ship_channel)
 	ship_channel = internal_ship_channel | external_ship_channel
+
+	orig=(vert_orig_offset,horz_orig_offset,orig_height,orig_width)
+	pattern=(vert_pattern_offset,pattern_height,horz_pattern_offset,pattern_width)
+	search=(vert_search_offset,search_height,horz_search_offset,search_width)
+	life=(vert_life_offset,life_height,horz_life_offset,life_width)
 	
-	P.print(P.DEBUG,"Original Corner: ("+str(vert_orig_offset)+","+str(horz_orig_offset)+") Size: "+str(orig_height)+" x "+str(orig_width))
-	P.print(P.DEBUG,"Pattern Corner: ("+str(vert_pattern_offset)+","+str(horz_pattern_offset)+") Size: "+str(pattern_height)+" x "+str(pattern_width))
-	P.print(P.DEBUG,"Search Corner: ("+str(vert_search_offset)+","+str(horz_search_offset)+") Size: "+str(search_height)+" x "+str(search_width))
-	P.print(P.DEBUG,"Life Corner: ("+str(vert_life_offset)+","+str(horz_life_offset)+") Size: "+str(life_height)+" x "+str(life_width))
-	
+	printuple=lambda i,j,x,y: " Corner: ("+str(i)+","+str(j)+") Size: "+str(x)+" X "+str(y)
+	P.print(P.DEBUG,"Original"+printuple(*orig))
+	P.print(P.DEBUG,"Pattern"+printuple(*pattern))
+	P.print(P.DEBUG,"Search"+printuple(*search))
+	P.print(P.DEBUG,"Life"+printuple(*life))
+
 	## SET UP THE SAT MODEL ##
 	model = cp_model.CpModel()
 	# Creates the cell variables: int and Boolean
@@ -398,8 +409,6 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 					continue
 				ns = sum(a[p][i+k][j+m] for k in range(-1,2) for m in range(-1,2) if i+k in range(model_height) and j+m in range(model_width) and (k,m) != (0,0))
 				for t in range(9):
-					model.Add(0<=ns)
-					model.Add(ns<9)
 					model.Add(ns!=t).OnlyEnforceIf([b[(p+1)%period][i][j].Not() if B[t] else b[(p+1)%period][i][j],b[p][i][j].Not()]) #birth
 					model.Add(ns!=t).OnlyEnforceIf([b[(p+1)%period][i][j].Not() if S[t] else b[(p+1)%period][i][j],b[p][i][j]]) #survival
 
@@ -409,57 +418,54 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 	# Now, let's set up the values we're forcing from the input pattern
 	# For the rotor, we want to enforce the exact periodicity from the original pattern
 	rotor_cells = set()
-	for x in rotor:
+
+	for i,j,k in rotor:
 		# We need to check if x is in the search space (think of removing rows). If not, we can throw an error here.
-		if x[0] not in range(vert_search_offset,vert_search_offset+search_height) or x[1] not in range(horz_search_offset,horz_search_offset+search_width):
+		if not inctangle(*search)(i,j):
 			sys.exit('INFEASIBLE: Rotor cell lies outside specified search space.')
 		for p in range(period):
-			model.Add(a[p][x[0]][x[1]] == x[2][p])
-		rotor_cells.add((x[0],x[1]))	
-			
+			model.Add(a[p][i][j] == k[p])
+		rotor_cells.add((i,j))	
+
 	# For the remaining cells in the original pattern, we don't know what value they'll need, but we want
 	# to force them to not join the rotor. Note: if preserved stator cells end up falling outside the search space, then
 	# the model will (and should) return INFEASIBLE.
-	for x in stator:
-		if x[0] not in range(vert_search_offset,vert_search_offset+search_height) or x[1] not in range(horz_search_offset,horz_search_offset+search_width):
-			if x in preserve:
+	for i,j in stator:
+		if not inctangle(*search)(i,j):
+			if (i,j) in preserve:
 				sys.exit('INFEASIBLE: Preserved stator cell lies outside specified search space.')
 			# If x is NOT in preserve, then this is de-facto setting this cell to 0, which is OK.
 		else:
 			for p in range(1,period):
-				model.Add(a[p][x[0]][x[1]] == a[0][x[0]][x[1]])
-			if x in preserve:
-				model.Add(a[0][x[0]][x[1]] == 1)
-			if x in forceblank:
-				model.Add(a[0][x[0]][x[1]] == 0)
-				
-	for x in blank:
-		# Perfectly OK for x to be blank outside the search space, even if it is to be preserved.
-		if x[0] in range(vert_search_offset,vert_search_offset+search_height) and x[1] in range(horz_search_offset,horz_search_offset+search_width):
-			for p in range(1,period):
-				model.Add(a[p][x[0]][x[1]] == a[0][x[0]][x[1]])
-			if x in preserve:
-				model.Add(a[0][x[0]][x[1]] == 0)
+				model.Add(a[p][i][j] == a[0][i][j])
+			if (i,j) in preserve:
+				model.Add(a[0][i][j] == 1)
+			if (i,j) in forceblank:
+				model.Add(a[0][i][j] == 0)
 
+	for i,j in stilter(inctangle(*search),blank):
+		# Perfectly OK for x to be blank outside the search space, even if it is to be preserved.
+		for p in range(1,period):
+			model.Add(a[p][i][j] == a[0][i][j])
+		if (i,j) in preserve:
+			model.Add(a[0][i][j] == 0)
 	## ADJUSTING INITIAL AND BOUNDARY CONDITIONS ##
 	# Cells are outside the original pattern but in the search space will be static, unless they are in the ship channel
-	for i in range(vert_search_offset,vert_search_offset+search_height):
-		for j in range(horz_search_offset,horz_search_offset+search_width):
-			if (i not in range(vert_pattern_offset,vert_pattern_offset+pattern_height) or j not in range(horz_pattern_offset,horz_pattern_offset+pattern_width)) and (i,j) not in ship_channel:
-					for p in range(1,period):
-						model.Add(a[p][i][j] == a[0][i][j])
+	for i,j in rangectangle(*search):
+		if not inctangle(*pattern)(i,j) and (i,j) not in ship_channel:
+				for p in range(1,period):
+					model.Add(a[p][i][j] == a[0][i][j])
 
 	# All cells outside the search space need to be forced to 0, unless they are in the ship channel
-	for i in range(vert_life_offset,vert_life_offset+life_height):
-		for j in range(horz_life_offset,horz_life_offset+life_width):
-			if (i not in range(vert_search_offset,vert_search_offset+search_height) or j not in range(horz_search_offset,horz_search_offset+search_width)) and (i,j) not in ship_channel:
-				for p in range(period):
-					model.Add(a[p][i][j] == 0)
-		
+	for i,j in rangectangle(*life):
+		if not inctangle(*search)(i,j) and (i,j) not in ship_channel:
+			for p in range(period):
+				model.Add(a[p][i][j] == 0)
+
 	# Finally the outer one cell frame of the model. Needs to be zero in every period, unless it's in the ship channel
 	for i in range(model_height):
 		for j in range(model_width):
-			if (i not in range(vert_life_offset,vert_life_offset+life_height) or j not in range(horz_life_offset,horz_life_offset+life_width)) and (i,j) not in ship_channel:
+			if not inctangle(*life)(i,j) and (i,j) not in ship_channel:
 				for p in range(period):
 					model.Add(a[p][i][j] == 0)
 					
@@ -471,17 +477,17 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 				model.Add(a[0][i+vert_orig_offset][j+horz_orig_offset] == ((i,j) in live_cells))
 
 	# Calculate size of stator
-	size = sum(a[0][i][j] for i in range(vert_search_offset,vert_search_offset+search_height) for j in range(horz_search_offset,horz_search_offset+search_width) if (i,j) not in (rotor_cells | ship_channel))
+	size = sum(a[0][i][j] for i,j in rangectangle(*search) if (i,j) not in (rotor_cells | ship_channel))
 
 	model.Minimize(size)
 
 	solver = cp_model.CpSolver()
-	print_vars = [[a[0][i+vert_search_offset][j+horz_search_offset] for j in range(search_width)] for i in range(search_height)]
+	print_vars = [a[0][i+vert_search_offset][horz_search_offset:horz_search_offset+search_width] for i in range(search_height)]
 	
 	solution_callback = ObjectiveSolutionPrinter(print_vars)
 	status = solver.Solve(model)
 	P.print(P.TEST,'Status = %s' % solver.StatusName(status))
-	value_vars = [[solver.Value(print_vars[i][j]) for j in range(search_width)] for i in range(search_height)]
+	value_vars = [list(map(solver.Value,i)) for i in print_vars]
 	rle = array_to_RLE(value_vars)
 	P.print(P.NORMAL,rle)
 	P.print(P.TEST,'Size of new stator: '+ str(solver.Value(size)))
