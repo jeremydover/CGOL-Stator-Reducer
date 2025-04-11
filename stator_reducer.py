@@ -58,7 +58,7 @@ class ObjectiveSolutionPrinter(cp_model.CpSolverSolutionCallback):
 		P.print(P.NORMAL,rle)
 
 def RLE_to_tuples(rle,rule=False):
-	global B,S
+	global B,S,isRuleLife
 	# First get bounding box sizes from RLE
 	x = re.search(r"x = (\d+)",rle)
 	if x is None:
@@ -71,9 +71,17 @@ def RLE_to_tuples(rle,rule=False):
 	my_height = int(y.group(1))
 
 	if rule:
-		r = re.search(r"rule = B(\d+/S\d+)",rle).group(1).split('/S')
-		if r is None: r==('3','23')
-		B,S=map(lambda s: list(map(lambda i: str(i) in s,range(9))),r)
+		r = re.search(r"rule = [Bb](\d+)/[Ss](\d+)",rle)
+		if r is None:
+			r1 = ('3','23')
+			isRuleLife = True
+		else:
+			r1 = (r.group(1),r.group(2))
+			if r1 == ('3','23'):
+				isRuleLife = True
+			else:
+				isRuleLife = False
+		B,S=map(lambda s: list(map(lambda i: str(i) in s,range(9))),r1)
 	
 	# Now strip header line, and eliminate carriage returns
 	cells = re.sub(r'^.*\n','',rle)
@@ -102,7 +110,7 @@ def array_to_RLE(variables):
 	height = len(variables)
 	width = len(variables[0])
 	
-	rle = ''
+	rle = 'x = '+str(width)+', y = '+str(height)+', rule = B'+''.join([str(i) for i in range(len(B)) if B[i]])+'/S'+''.join([str(i) for i in range(len(S)) if S[i]])+'\n'
 	content = '\n'.join(map(lambda i: ''.join(map(str,variables[i])),range(height)))+'\n'
 	
 	while content != '\n':
@@ -227,7 +235,13 @@ def process_pattern(pattern,period,is_gun):
 		for i in range(current_pattern_height):
 			for j in range(current_pattern_width):
 				neighborhood = [ap[i+k][j+m] for k in range(-1,2) for m in range(-1,2) if i+k in range(current_pattern_height) and j+m in range(current_pattern_width)]
-				this_phase_life_array[i][j] = S[sum(neighborhood)-1] if ap[i][j] else B[sum(neighborhood)]
+				# The direct assignment of Booleans here was causing the p14 gun test case to fail
+				# this_phase_life_array[i][j] = S[sum(neighborhood)-1] if ap[i][j] else B[sum(neighborhood)]
+				if life_array[p-1][i][j] == 0:					
+					this_phase_life_array[i][j] = 1 if B[sum(neighborhood)] else 0
+				else:
+					this_phase_life_array[i][j] = 1 if S[sum(neighborhood)-1] else 0
+		
 		life_array.append(this_phase_life_array)
 		if p==period: break
 	
@@ -408,10 +422,17 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 				if p == period-1 and (i,j) in ship_channel:
 					continue
 				ns = sum(a[p][i+k][j+m] for k in range(-1,2) for m in range(-1,2) if i+k in range(model_height) and j+m in range(model_width) and (k,m) != (0,0))
-				for t in range(9):
-					model.Add(ns!=t).OnlyEnforceIf([b[(p+1)%period][i][j].Not() if B[t] else b[(p+1)%period][i][j],b[p][i][j].Not()]) #birth
-					model.Add(ns!=t).OnlyEnforceIf([b[(p+1)%period][i][j].Not() if S[t] else b[(p+1)%period][i][j],b[p][i][j]]) #survival
-
+				if isRuleLife:
+					model.Add(ns >= 2).OnlyEnforceIf([b[(p+1) % period][i][j],b[p][i][j]])
+					model.Add(ns <= 3).OnlyEnforceIf([b[(p+1) % period][i][j],b[p][i][j]])
+					model.Add(ns != 2).OnlyEnforceIf([b[(p+1) % period][i][j].Not(),b[p][i][j]])
+					model.Add(ns != 3).OnlyEnforceIf([b[(p+1) % period][i][j].Not(),b[p][i][j]])
+					model.Add(ns == 3).OnlyEnforceIf([b[(p+1) % period][i][j],b[p][i][j].Not()])
+					model.Add(ns != 3).OnlyEnforceIf([b[(p+1) % period][i][j].Not(),b[p][i][j].Not()])
+				else:
+					for t in range(9):
+						model.Add(ns!=t).OnlyEnforceIf([b[(p+1)%period][i][j].Not() if B[t] else b[(p+1)%period][i][j],b[p][i][j].Not()]) #birth
+						model.Add(ns!=t).OnlyEnforceIf([b[(p+1)%period][i][j].Not() if S[t] else b[(p+1)%period][i][j],b[p][i][j]]) #survival
 
 	## SET INITIAL AND BOUNDARY CONDITIONS IN PATTERN BOUNDING BOX ##
 	

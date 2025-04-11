@@ -34,5 +34,10 @@ class TestCases(unittest.TestCase):
 		test_string = re.sub("\s+", "", result.stdout)
 		self.assertEqual(test_string,self.out_test(491,'OPTIMAL',489),'Failed p14-glider-gun.rle')
 		
+	def test_great_on_off_OT(self):
+		result = subprocess.run([shutil.which('python'),os.path.join(os.getcwd(),'stator_reducer.py'),os.path.join(os.getcwd(),'tests','great-on-off.rle'),'2','--verbose','0'], capture_output=True, text=True)
+		test_string = re.sub("\s+", "", result.stdout)
+		self.assertEqual(test_string,self.out_test(18,'OPTIMAL',6),'Failed great-on-off.rle')
+		
 if __name__ == '__main__':
     unittest.main()
