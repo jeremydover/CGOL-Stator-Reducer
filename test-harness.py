@@ -39,5 +39,10 @@ class TestCases(unittest.TestCase):
 		test_string = re.sub("\s+", "", result.stdout)
 		self.assertEqual(test_string,self.out_test(18,'OPTIMAL',6),'Failed great-on-off.rle')
 		
+	def test_p5_b36_s245(self):
+		result = subprocess.run([shutil.which('python'),os.path.join(os.getcwd(),'stator_reducer.py'),os.path.join(os.getcwd(),'tests','p5-b36-s245.rle'),'5','--verbose','0'], capture_output=True, text=True)
+		test_string = re.sub("\s+", "", result.stdout)
+		self.assertEqual(test_string,self.out_test(469,'OPTIMAL',344),'Failed p5-b36-s245.rle')
+		
 if __name__ == '__main__':
     unittest.main()
