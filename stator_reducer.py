@@ -487,10 +487,11 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 	solution_callback = ObjectiveSolutionPrinter(print_vars)
 	status = solver.Solve(model)
 	P.print(P.TEST,'Status = %s' % solver.StatusName(status))
-	value_vars = [list(map(solver.Value,i)) for i in print_vars]
-	rle = array_to_RLE(value_vars)
-	P.print(P.NORMAL,rle)
-	P.print(P.TEST,'Size of new stator: '+ str(solver.Value(size)))
+	if status == cp_model.OPTIMAL:
+		value_vars = [list(map(solver.Value,i)) for i in print_vars]
+		rle = array_to_RLE(value_vars)
+		P.print(P.NORMAL,rle)
+		P.print(P.TEST,'Size of new stator: '+ str(solver.Value(size)))
 		#for p in range(period):
 		#	for i in range(model_height):
 		#		print('{:d}:'.format(i),end='')
