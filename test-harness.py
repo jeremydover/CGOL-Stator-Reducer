@@ -44,5 +44,10 @@ class TestCases(unittest.TestCase):
 		test_string = re.sub("\s+", "", result.stdout)
 		self.assertEqual(test_string,self.out_test(469,'OPTIMAL',344),'Failed p5-b36-s245.rle')
 		
+	def test_55p10_narrower(self):
+		result = subprocess.run([shutil.which('python'),os.path.join(os.getcwd(),'stator_reducer.py'),os.path.join(os.getcwd(),'tests','55P10.rle'),'10','--verbose','0','--adjust','-1','-1','0','0'], capture_output=True, text=True)
+		test_string = re.sub("\s+", "", result.stdout)
+		self.assertEqual(test_string,self.out_test(47,'OPTIMAL',51),'Failed 55p10.rle')
+		
 if __name__ == '__main__':
     unittest.main()

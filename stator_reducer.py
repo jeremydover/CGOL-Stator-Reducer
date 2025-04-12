@@ -185,8 +185,8 @@ def process_pattern(pattern,period,is_gun):
 	# Note: to fix a super-painful-to-find bug in the gun case, we actually need to step an extra time beyond period
 	# All we really need this for is to determine if there are extra cells in the ship channel beyond the frame (spoiler:
 	# there can be). But it does not hurt to run the pattern an extra tick. 
-	for p,ap in enumerate(life_array,start=1):
-		expansion = test_expansion(ap)
+	for p in range(1,period+1):
+		expansion = test_expansion(life_array[p-1])
 		bounding_box_expansion.append(expansion)
 		
 		side = ['left','right','top','bottom']
@@ -234,7 +234,7 @@ def process_pattern(pattern,period,is_gun):
 	
 		for i in range(current_pattern_height):
 			for j in range(current_pattern_width):
-				neighborhood = [ap[i+k][j+m] for k in range(-1,2) for m in range(-1,2) if i+k in range(current_pattern_height) and j+m in range(current_pattern_width)]
+				neighborhood = [life_array[p-1][i+k][j+m] for k in range(-1,2) for m in range(-1,2) if i+k in range(current_pattern_height) and j+m in range(current_pattern_width)]
 				# The direct assignment of Booleans here was causing the p14 gun test case to fail
 				# this_phase_life_array[i][j] = S[sum(neighborhood)-1] if ap[i][j] else B[sum(neighborhood)]
 				if life_array[p-1][i][j] == 0:					
@@ -243,7 +243,6 @@ def process_pattern(pattern,period,is_gun):
 					this_phase_life_array[i][j] = 1 if S[sum(neighborhood)-1] else 0
 		
 		life_array.append(this_phase_life_array)
-		if p==period: break
 	
 	# Looks like this might be another place where gun mode and oscillator mode differ. In oscillator mode, the search space 
 	# remains the entire pattern. Only in gun mode is there a difference (at this stage). In gun mode, the search space remains
