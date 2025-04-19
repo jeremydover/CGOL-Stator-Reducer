@@ -87,6 +87,11 @@ def RLE_to_tuples(rle,rule=False):
 	cells = re.sub(r'^.*\n','',rle)
 	cells = cells.replace('\n','')
 	
+	# If rule is LifeHistory, process into normal RLE
+	if re.search(r"rule = LifeHistory",rle):
+		cells = re.sub(r'[ABCEF]','o',cells)
+		cells = re.sub(r'[D\.]','b',cells)
+	
 	live_cells = []
 	current_row = 0
 	current_column = 0
@@ -128,7 +133,6 @@ def test_border(border):
 	# previous pattern.
 	return int(B[3] and '111' in my_string or B[2] and ('11' in my_string or '101' in my_string))
 	
-
 def test_expansion(pattern):
 	my_height = len(pattern)
 	my_width = len(pattern[0])
@@ -137,6 +141,38 @@ def test_expansion(pattern):
 			test_border([pattern[i][my_width-1] for i in range(my_height)]),  # right border
 			test_border(pattern[0]), 	          # top border
 			test_border(pattern[my_height-1])]  # bottom border
+
+def process_rotor(pattern,period):
+	# OK, in this case we are not passed a full pattern, but just a set of rotor cells with their values
+	# and we need to build a stator around it.
+	global B,S,isRuleLife
+	B = [False,False,False,True,False,False,False,False,False]
+	S = [False,False,True,True,False,False,False,False,False]
+	isRuleLife = True
+	orig_height = 0
+	orig_width = 0
+	cells = pattern.splitlines()
+	my_cells = {}
+	for cell in cells:
+		cell_list = cell.split(' ')
+		row = int(cell_list[0])
+		column = int(cell_list[1])
+		history = list(map(int,cell_list[2:]))
+		
+		# We calculate the dimensions of the array now, store off the cell values for later when
+		# we can create the life array
+		orig_height = max(orig_height,row+1)
+		orig_width = max(orig_width,column+1)
+		my_cells[(row,column)] = history
+	
+	life_array = [[[0]*orig_width for i in range(orig_height)] for p in range(period)]
+	for x in my_cells:
+		for p in range(period):
+			life_array[p][x[0]][x[1]] = my_cells[x][p]
+			
+	rotor = [[x[0],x[1],my_cells[x]] for x in my_cells.keys()]
+			
+	return orig_height,orig_width,orig_height,orig_width,0,0,orig_height,orig_width,0,0,[],[],rotor,[]
 
 def process_pattern(pattern,period,is_gun):
 	# Process the pattern RLE
@@ -283,10 +319,13 @@ def process_pattern(pattern,period,is_gun):
 
 	return orig_height,orig_width,current_pattern_height,current_pattern_width,vert_orig_offset,horz_orig_offset,current_search_height,current_search_width,vert_search_offset,horz_search_offset,stator,blank,rotor,external_ship_channel
 	
-def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=0,preserve=[],forceblank=[],is_gun=False,internal_ship_channel=[],model_test=False):
+def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=0,preserve=[],forceblank=[],is_gun=False,internal_ship_channel=[],model_test=False,rotor_only=False):
 	
 	# Send the initial pattern processing off to not clutter the modelling
-	orig_height,orig_width,pattern_height,pattern_width,vert_orig_offset,horz_orig_offset,search_height,search_width,vert_search_offset,horz_search_offset,stator,blank,rotor,external_ship_channel = process_pattern(pattern,period,is_gun)
+	if rotor_only:
+		orig_height,orig_width,pattern_height,pattern_width,vert_orig_offset,horz_orig_offset,search_height,search_width,vert_search_offset,horz_search_offset,stator,blank,rotor,external_ship_channel = process_rotor(pattern,period)
+	else:
+		orig_height,orig_width,pattern_height,pattern_width,vert_orig_offset,horz_orig_offset,search_height,search_width,vert_search_offset,horz_search_offset,stator,blank,rotor,external_ship_channel = process_pattern(pattern,period,is_gun)
 	
 	# There are various subregions of the ultimate model board we need to track
 	# 1. The pattern box; the minimum required for the original pattern to evolve. For now this is based at (0,0), and has
@@ -469,6 +508,8 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 			model.Add(a[p][i][j] == a[0][i][j])
 		if (i,j) in preserve:
 			model.Add(a[0][i][j] == 0)
+		if (i,j) in forceblank:
+				model.Add(a[0][i][j] == 0)
 	## ADJUSTING INITIAL AND BOUNDARY CONDITIONS ##
 	# Cells are outside the original pattern but in the search space will be static, unless they are in the ship channel
 	for i,j in rangectangle(*search):
@@ -532,6 +573,7 @@ if __name__ == '__main__':
 	parser.add_argument('--shipchannel',help='Filename of RLE which identifies all cells used by spaceships created by the gun within the original bounding box. Should be the same size as the pattern.',default=None)
 	parser.add_argument('--verbose',default=1,help='Set level of print verbosity: 0 is TEST (least), 2 is DEBUG (most). Defaults to 1.')
 	parser.add_argument('--modeltest',help='Tests model against input pattern, which should always yield a solution unless grid is being shrunk.',action='store_true')
+	parser.add_argument('--onlyrotor',help='Instead of an RLE, pattern is input as the set of rotor cells only',action='store_true')
 		
 	args = parser.parse_args()
 
@@ -577,4 +619,4 @@ if __name__ == '__main__':
 	# Set up screen printer
 	P = screen_printer(int(args.verbose))
 	
-	main(pattern,int(args.period),adjust[0],adjust[1],adjust[2],adjust[3],preserve,forceblank,args.gun,shipchannel,args.modeltest)
+	main(pattern,int(args.period),adjust[0],adjust[1],adjust[2],adjust[3],preserve,forceblank,args.gun,shipchannel,args.modeltest,args.onlyrotor)
