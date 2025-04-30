@@ -89,8 +89,8 @@ def RLE_to_tuples(rle,rule=False):
 	
 	# If rule is LifeHistory, process into normal RLE
 	if re.search(r"rule = LifeHistory",rle):
-		cells = re.sub(r'[ABCEF]','o',cells)
-		cells = re.sub(r'[D\.]','b',cells)
+		cells = re.sub(r'[ACEF]','o',cells)
+		cells = re.sub(r'[BD\.]','b',cells)
 	
 	live_cells = []
 	current_row = 0
