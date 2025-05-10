@@ -617,8 +617,13 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 
 	# Calculate size of stator
 	size = sum(a[0][i][j] for i,j in rangectangle(*search) if (i,j) not in (rotor_cells | ship_channel))
-
 	model.Minimize(size)
+	
+	phase_pop = [model.NewIntVar(0,model_height*model_width,'') for p in range(period)]
+	population = model.NewIntVar(0,model_height*model_width,'')
+	for p in range(period):
+		model.Add(phase_pop[p] == sum(a[p][i][j] for i in range(model_height) for j in range(model_width)))
+	model.AddMinEquality(population,phase_pop)
 
 	solver = cp_model.CpSolver()
 	print_vars = [a[0][i+vert_search_offset][horz_search_offset:horz_search_offset+search_width] for i in range(search_height)]
@@ -631,6 +636,7 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 		rle = array_to_RLE(value_vars)
 		P.print(P.NORMAL,rle)
 		P.print(P.TEST,'Size of new stator: '+ str(solver.Value(size)))
+		P.print(P.TEST,'New population: '+ str(solver.Value(population)))
 		#for p in range(period):
 		#	for i in range(model_height):
 		#		print('{:d}:'.format(i),end='')
