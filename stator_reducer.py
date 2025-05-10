@@ -142,9 +142,15 @@ def test_expansion(pattern):
 			test_border(pattern[0]), 	          # top border
 			test_border(pattern[my_height-1])]  # bottom border
 
-def process_rotor(pattern,period):
+def process_array(pattern,period):
 	# OK, in this case we are not passed a full pattern, but just a set of rotor cells with their values
 	# and we need to build a stator around it.
+	#
+	# ARRAY format: 
+	# R C g0 g1 g2 g3 g4 ... gp
+	# R is the row number of the cell described (0-based)
+	# C is the column number of the cell described (1-based)
+	# gx is the value whether the cell is live (1) or dead (0) in generation x
 	global B,S,isRuleLife
 	B = [False,False,False,True,False,False,False,False,False]
 	S = [False,False,True,True,False,False,False,False,False]
@@ -173,6 +179,75 @@ def process_rotor(pattern,period):
 	rotor = [[x[0],x[1],my_cells[x]] for x in my_cells.keys()]
 			
 	return orig_height,orig_width,orig_height,orig_width,0,0,orig_height,orig_width,0,0,[],[],rotor,[]
+	
+def process_knownrotor(pattern):
+	# OK, in this case we are not passed a full pattern, but just a set of rotor cells with their values
+	# and we need to build a stator around it.
+	#
+	# KNOWNROTOR format: 
+	# See https://github.com/Matthias-Merzenich/dr/blob/main/dr.documentation.txt
+	global B,S,isRuleLife
+	B = [False,False,False,True,False,False,False,False,False]
+	S = [False,False,True,True,False,False,False,False,False]
+	isRuleLife = True
+	x = re.search(r"p(\d+) r(\d+) (\d+)x(\d+) (.*)",pattern)
+	orig_height = int(x.group(3))
+	orig_width = int(x.group(4))
+	period = int(x.group(1))
+	rotor_pattern = x.group(5)
+	
+	row_list = (rotor_pattern.split(' '))[:orig_height]
+	my_cells = {}
+	stator_cells = {}
+	life_array = [[[0]*orig_width for i in range(orig_height)] for p in range(period)]
+	num_stator = [[0]*orig_width for i in range(orig_height)]
+	for i in range(orig_height):
+		for j in range(orig_width):
+			match row_list[i][j]:
+				case '.':
+					stator_cells[(i,j)] = 1
+				case '0':
+					num_stator[i][j] = 0
+				case '1':
+					num_stator[i][j] = 1
+				case '2':
+					num_stator[i][j] = 2
+				case '3':
+					num_stator[i][j] = 3
+				case '@':
+					life_array[0][i][j] = 1
+					num_stator[i][j] = 0
+				case 'A':
+					life_array[0][i][j] = 1
+					num_stator[i][j] = 1
+				case 'B':
+					life_array[0][i][j] = 1
+					num_stator[i][j] = 2
+				case 'C':
+					life_array[0][i][j] = 1
+					num_stator[i][j] = 3
+
+	# First generation is loaded
+	for p in range(1,period):
+		for i in range(orig_height):
+			for j in range(orig_width):
+				if (i,j) in stator_cells:
+					continue
+				neighborhood = [life_array[p-1][i+k][j+m] for k in range(-1,2) for m in range(-1,2) if i+k in range(orig_height) and j+m in range(orig_width)]
+				if life_array[p-1][i][j] == 0:
+					life_array[p][i][j] = 1 if B[sum(neighborhood)+num_stator[i][j]] else 0
+				else:
+					life_array[p][i][j] = 1 if S[sum(neighborhood)-1+num_stator[i][j]] else 0
+	
+	for i in range(orig_height):
+		for j in range(orig_width):
+			my_values = [p[i][j] for p in life_array]
+			if len(set(my_values)) == 2:
+				my_cells[(i,j)] = my_values
+	
+	rotor = [[x[0],x[1],my_cells[x]] for x in my_cells.keys()]
+			
+	return period,orig_height,orig_width,orig_height,orig_width,0,0,orig_height,orig_width,0,0,[],[],rotor,[]
 
 def process_pattern(pattern,period,is_gun):
 	# Process the pattern RLE
@@ -319,11 +394,13 @@ def process_pattern(pattern,period,is_gun):
 
 	return orig_height,orig_width,current_pattern_height,current_pattern_width,vert_orig_offset,horz_orig_offset,current_search_height,current_search_width,vert_search_offset,horz_search_offset,stator,blank,rotor,external_ship_channel
 	
-def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=0,preserve=[],forceblank=[],is_gun=False,internal_ship_channel=[],model_test=False,rotor_only=False):
+def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=0,preserve=[],forceblank=[],is_gun=False,internal_ship_channel=[],model_test=False,inputformat='RLE'):
 	
 	# Send the initial pattern processing off to not clutter the modelling
-	if rotor_only:
-		orig_height,orig_width,pattern_height,pattern_width,vert_orig_offset,horz_orig_offset,search_height,search_width,vert_search_offset,horz_search_offset,stator,blank,rotor,external_ship_channel = process_rotor(pattern,period)
+	if inputformat == 'ARRAY':
+		orig_height,orig_width,pattern_height,pattern_width,vert_orig_offset,horz_orig_offset,search_height,search_width,vert_search_offset,horz_search_offset,stator,blank,rotor,external_ship_channel = process_array(pattern,period)
+	elif inputformat == 'KNOWNROTOR':
+		period,orig_height,orig_width,pattern_height,pattern_width,vert_orig_offset,horz_orig_offset,search_height,search_width,vert_search_offset,horz_search_offset,stator,blank,rotor,external_ship_channel = process_knownrotor(pattern)
 	else:
 		orig_height,orig_width,pattern_height,pattern_width,vert_orig_offset,horz_orig_offset,search_height,search_width,vert_search_offset,horz_search_offset,stator,blank,rotor,external_ship_channel = process_pattern(pattern,period,is_gun)
 	
@@ -479,12 +556,13 @@ def main(pattern,period,left_adjust=0,right_adjust=0,top_adjust=0,bottom_adjust=
 	rotor_cells = set()
 
 	for i,j,k in rotor:
-		# We need to check if x is in the search space (think of removing rows). If not, we can throw an error here.
-		if not inctangle(*search)(i,j):
+		# We need to check if x is in the search space (think of removing rows), unless this cell is in the ship channel, in which case it would be OK. If not, we can throw an error here.
+		if not inctangle(*search)(i,j) and (i,j) not in ship_channel:
 			sys.exit('INFEASIBLE: Rotor cell lies outside specified search space.')
-		for p in range(period):
-			model.Add(a[p][i][j] == k[p])
-		rotor_cells.add((i,j))	
+		else:
+			for p in range(period):
+				model.Add(a[p][i][j] == k[p])
+			rotor_cells.add((i,j))	
 
 	# For the remaining cells in the original pattern, we don't know what value they'll need, but we want
 	# to force them to not join the rotor. Note: if preserved stator cells end up falling outside the search space, then
@@ -573,7 +651,7 @@ if __name__ == '__main__':
 	parser.add_argument('--shipchannel',help='Filename of RLE which identifies all cells used by spaceships created by the gun within the original bounding box. Should be the same size as the pattern.',default=None)
 	parser.add_argument('--verbose',default=1,help='Set level of print verbosity: 0 is TEST (least), 2 is DEBUG (most). Defaults to 1.')
 	parser.add_argument('--modeltest',help='Tests model against input pattern, which should always yield a solution unless grid is being shrunk.',action='store_true')
-	parser.add_argument('--onlyrotor',help='Instead of an RLE, pattern is input as the set of rotor cells only',action='store_true')
+	parser.add_argument('--inputformat',help='By default, the input file format for the oscillator is an RLE. However, other formats are possible. Recognized values are ARRAY and KNOWNROTORS.',default='RLE')
 		
 	args = parser.parse_args()
 
@@ -619,4 +697,4 @@ if __name__ == '__main__':
 	# Set up screen printer
 	P = screen_printer(int(args.verbose))
 	
-	main(pattern,int(args.period),adjust[0],adjust[1],adjust[2],adjust[3],preserve,forceblank,args.gun,shipchannel,args.modeltest,args.onlyrotor)
+	main(pattern,int(args.period),adjust[0],adjust[1],adjust[2],adjust[3],preserve,forceblank,args.gun,shipchannel,args.modeltest,args.inputformat)
