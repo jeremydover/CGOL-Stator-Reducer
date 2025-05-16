@@ -248,7 +248,7 @@ def process_knownrotor(pattern):
 	
 	rotor = [[x[0],x[1],my_cells[x]] for x in my_cells.keys()]
 			
-	return period,orig_height,orig_width,orig_height,orig_width,0,0,orig_height,orig_width,0,0,[],[],rotor,[]
+	return period,orig_height,orig_width,orig_height,orig_width,0,0,orig_height,orig_width,0,0,[],stator_cells,rotor,[]
 
 def process_pattern(pattern,period,is_gun):
 	# Process the pattern RLE
