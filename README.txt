@@ -1,6 +1,6 @@
 usage: stator_reducer [-h] [--adjust LEFT RIGHT TOP BOTTOM] [--preserve PRESERVE]
                       [--forceblank FORCEBLANK] [--gun] [--shipchannel SHIPCHANNEL]
-                      [--verbose VERBOSE] [--modeltest]
+                      [--verbose VERBOSE] [--modeltest] [--inputformat INPUTFORMAT]
                       pattern period
 
 A program to minimize the stator size of oscillators and guns in Conway's Game of Life
@@ -33,6 +33,9 @@ options:
                         (most). Defaults to 1.
   --modeltest           Tests model against input pattern, which should always yield a
                         solution unless grid is being shrunk.
+  --inputformat INPUTFORMAT
+                        By default, the input file format for the oscillator is an RLE. However, other
+                        formats are possible. Recognized values are ARRAY and KNOWNROTORS.
 
 The primary difference between gun processing and oscillator processing is that for
 oscillator processing, any cells in the pattern evolution that leave the original bounding

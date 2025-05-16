@@ -194,6 +194,7 @@ def process_knownrotor(pattern):
 	orig_height = int(x.group(3))
 	orig_width = int(x.group(4))
 	period = int(x.group(1))
+	P.print(P.NORMAL,'Period: '+str(period))
 	rotor_pattern = x.group(5)
 	
 	row_list = (rotor_pattern.split(' '))[:orig_height]
